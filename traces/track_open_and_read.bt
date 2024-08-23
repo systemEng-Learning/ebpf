@@ -1,0 +1,51 @@
+#!/usr/bin/bpftrace
+
+BEGIN {
+	printf("Starting timing between reading and writing\n")
+}
+
+tracepoint:syscalls:sys_enter_openat,
+tracepoint:syscalls:sys_enter_open {
+	@start[tid] = nsecs;
+}
+
+tracepoint:syscalls:sys_enter_read
+/@start[tid] != 0/
+{
+	if ( args->fd <= 3 ) {
+		delete(@start[tid]);
+	}
+}
+
+tracepoint:syscalls:sys_exit_read
+/@start[tid] != 0/
+{
+	$usec = (nsecs - @start[tid])/1000;
+	printf("Reading: %-16s %-6d\n", comm, $usec);
+}
+
+
+tracepoint:syscalls:sys_enter_write
+/@start[tid] != 0/
+{
+	if ( args->fd <= 3 ) {
+		delete(@start[tid]);
+	}
+}
+tracepoint:syscalls:sys_exit_write
+/@start[tid] != 0/
+{
+	$usec = (nsecs - @start[tid])/1000;
+	printf("Writing: %-16s %-6d\n", comm, $usec);
+}
+tracepoint:syscalls:sys_exit_close
+/@start[tid] != 0/
+{
+	$usec = (nsecs - @start[tid])/1000;
+	printf("Closing: %-16s %-6d\n", comm, $usec);
+	delete(@start[tid]);
+}
+
+END {
+	clear(@start);
+}
