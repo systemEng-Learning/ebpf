@@ -17,7 +17,7 @@ int do_trace(struct pt_regs *ctx) {
         delta = bpf_ktime_get_ns() - *tsp;
         count = *csp;
         if (delta < 1000000000) {
-            bpf_trace_printk("%d %d\\n", delta / 1000000, count);
+            bpf_trace_printk("%d %d\\n", delta / 1000000, count + 1);
         }
         last.delete(&key);
         last.delete(&ckey);
