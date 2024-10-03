@@ -19,23 +19,29 @@ int kprobe__tcp_set_state(struct pt_regs *ctx, struct sock *sk, int state) {
     }
     int old_state = sk->__sk_common.skc_state;
     if ( old_state == TCP_SYN_SENT && state == TCP_CLOSE ) {
-        dist.increment(1);
+        dist.increment(0);
+	bpf_trace_printk("state: syn_sent->close\\n");
     }
     tsp = is_rst.lookup(&sk);
     if ( old_state == TCP_SYN_RECV && state == TCP_CLOSE && tsp == 0 ) {
-        dist.increment(1);
+        dist.increment(0);
+	bpf_trace_printk("state: syn_recv->close\\n");
         is_rst.update(&sk, &ts);
     }
     if ( old_state == TCP_ESTABLISHED && state == TCP_CLOSE && tsp == 0 ) {
         csp = counts.lookup(&sk);
         if ( csp == 0 ) {
-            dist.increment(2);
+            dist.increment(1);
+	    bpf_trace_printk("state: post_ack->close\\n");
+
         } else {
             u64 cs = *csp;
             if ( cs == 1 ) {
-                dist.increment(3);
+                dist.increment(2);
+		bpf_trace_printk("state: psh->close\\n");
             } else if ( cs > 1 && cs < 11 ) {
-                dist.increment(4);
+                dist.increment(3);
+		bpf_trace_printk("state: later->close\\n");
             }
         }
         is_rst.update(&sk, &ts);
@@ -83,13 +89,16 @@ int kprobe__tcp_reset(struct pt_regs *ctx, struct sock *sk, struct sk_buff *skb)
     u64 *csp;
     csp = counts.lookup(&sk);
     if ( csp == 0 ) {
-        dist.increment(2);
+        dist.increment(1);
+	bpf_trace_printk("reset: post_ack->close\\n");
     } else {
         u64 cs = *csp;
         if ( cs == 1 ) {
-            dist.increment(3);
+            dist.increment(2);
+	    bpf_trace_printk("reset: psh->close\\n");
         } else if ( cs > 1 && cs < 11 ) {
-            dist.increment(4);
+            dist.increment(3);
+	    bpf_trace_printk("reset: later->close\\n");
         }
     }
     is_rst.update(&sk, &ts);
