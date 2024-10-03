@@ -1,4 +1,5 @@
 from bcc import BPF
+from time import sleep
 
 b = BPF(src_file="track.c", cflags=["-Wno-macro-redefined"])
 
