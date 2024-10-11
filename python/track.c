@@ -8,6 +8,11 @@ BPF_HASH(counts, struct sock *, u64);
 BPF_HASH(is_rst, struct sock *, u8);
 BPF_HISTOGRAM(dist);
 
+static struct tcphdr *skb_to_tcphdr(const struct sk_buff *skb) {
+	// unstable API. verify logic in tcp_hdr() -> skb_transport_header().
+	return (struct tcphdr *)(skb->head + skb->transport_header);
+}
+
 int kprobe__tcp_set_state(struct pt_regs *ctx, struct sock *sk, int state) {
     u8 *tsp, ts = 1;
     u64 *csp;
@@ -106,12 +111,15 @@ int kprobe__tcp_reset(struct pt_regs *ctx, struct sock *sk, struct sk_buff *skb)
 }
 
 int kprobe__tcp_rcv_state_process(struct pt_regs *ctx, struct sock *sk, struct sk_buff *skb) {
-    const struct tcphdr *th = tcp_hdr(skb);
     if ( sk->__sk_common.skc_state != TCP_LISTEN ) {
         return 0;
     }
+    struct tcphdr *tcp = skb_to_tcphdr(skb);
+    u8 flag = ((u_int8_t *)tcp)[13];
+    u8 syn = flag & 2;
+    u8 fin = flag & 1;
     u8 ts = 1;
-    if ( th->syn && !th->fin ) {
+    if ( syn && !fin ) {
         traced.update(&sk, &ts);
         bpf_trace_printk("state: syn_received\\n");
     }
