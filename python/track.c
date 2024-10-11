@@ -104,3 +104,16 @@ int kprobe__tcp_reset(struct pt_regs *ctx, struct sock *sk, struct sk_buff *skb)
     is_rst.update(&sk, &ts);
     return 0;
 }
+
+int kprobe__tcp_rcv_state_process(struct pt_regs *ctx, struct sock *sk, struct sk_buff *skb) {
+    const struct tcphdr *th = tcp_hdr(skb);
+    if ( sk->__sk_common.skc_state != TCP_LISTEN ) {
+        return 0;
+    }
+    u8 ts = 1;
+    if ( th->syn && !th->fin ) {
+        traced.update(&sk, &ts);
+        bpf_trace_printk("state: syn_received\\n");
+    }
+    return 0;
+}
