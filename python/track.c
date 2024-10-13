@@ -22,6 +22,11 @@ static inline struct iphdr *skb_to_iphdr(const struct sk_buff *skb) {
 int kprobe__tcp_v4_rcv(struct pt_regs *ctx, struct sk_buff *skb) {
     struct iphdr *ip = skb_to_iphdr(skb);
     struct tcphdr *tcp = skb_to_tcphdr(skb);
+    u16 dport = tcp->dest;
+    dport = ntohs(dport);
+    if ( dport != 8000 ) {
+        return 0;
+    } 
     u8 flag = ((u_int8_t *)tcp)[13];
     u8 rst = flag & 4;
     u32 key = ip->saddr + (u32)tcp->source;
@@ -30,6 +35,13 @@ int kprobe__tcp_v4_rcv(struct pt_regs *ctx, struct sk_buff *skb) {
         syn_map.delete(&key);
         bpf_trace_printk("state: rst_received: %u\\n", key);
         dist.increment(0);
+    }
+
+    u8 *ackp = ack_map.lookup(&key);
+    if ( rst && ackp != 0 ) {
+        ack_map.delete(&key);
+        bpf_trace_printk("state: rst_received for ack: %u\\n", key);
+        dist.increment(1);
     }
     return 0;
 }
@@ -45,6 +57,11 @@ int kprobe__tcp_rcv_state_process(struct pt_regs *ctx, struct sock *sk, struct s
     }
     struct iphdr *ip = skb_to_iphdr(skb);
     struct tcphdr *tcp = skb_to_tcphdr(skb);
+    u16 dport = tcp->dest;
+    dport = ntohs(dport);
+    if ( dport != 8000 ) {
+        return 0;
+    } 
     u8 flag = ((u_int8_t *)tcp)[13];
     u8 fin = flag & 1;
     u8 syn = flag & 2;
@@ -79,8 +96,23 @@ int kprobe__tcp_rcv_state_process(struct pt_regs *ctx, struct sock *sk, struct s
 }
 
 int kprobe__tcp_rcv_established(struct pt_regs *ctx, struct sock *sk, struct sk_buff *skb) {
-    if ( sk->sk_state == TCP_SYN_RECV ) {
-        bpf_trace_printk("2current_state: received");
+    struct tcphdr *tcp = skb_to_tcphdr(skb);
+    u16 dport = tcp->dest;
+    dport = ntohs(dport);
+    if ( dport != 8000 ) {
+        return 0;
+    }
+    u8 flag = ((u_int8_t *)tcp)[13];
+    bpf_trace_printk("state: flag: %u\\n", flag);
+    u8 psh = flag & 8;
+    if ( psh ) {
+        bpf_trace_printk("state: psh received: %u\\n");
+    }
+
+    u32 key = sk->__sk_common.skc_rcv_saddr + (u32)sk->__sk_common.skc_num;
+    u8 *ackp = ack_map.lookup(&key);
+    if ( ackp != 0 ) {
+        bpf_trace_printk("state: ack_to_established: %u\\n", key);
     }
     return 0;
 }
